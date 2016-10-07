@@ -12,16 +12,32 @@ package main
 
 import (
 	"html/template"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"time"
 
-	"golang.org/x/blog/content/context/google"
-	"golang.org/x/blog/content/context/userip"
-	"golang.org/x/net/context"
+	"google"
+	"userip"
+
+	"context"
 )
 
 func main() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+		log.Print(req.URL.RequestURI())
+		time.Sleep(3 * time.Second)
+		data, err := ioutil.ReadFile("results.json")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Write(data)
+	})
+	go func() {
+		log.Fatal(http.ListenAndServe(":8000", mux))
+	}()
 	http.HandleFunc("/search", handleSearch)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
@@ -34,16 +50,16 @@ func handleSearch(w http.ResponseWriter, req *http.Request) {
 	// ctx.Done channel, which is the cancellation signal for requests
 	// started by this handler.
 	var (
-		ctx    context.Context
+		ctx    = req.Context()
 		cancel context.CancelFunc
 	)
 	timeout, err := time.ParseDuration(req.FormValue("timeout"))
 	if err == nil {
 		// The request has a timeout, so create a context that is
 		// canceled automatically when the timeout expires.
-		ctx, cancel = context.WithTimeout(context.Background(), timeout)
+		ctx, cancel = context.WithTimeout(ctx, timeout)
 	} else {
-		ctx, cancel = context.WithCancel(context.Background())
+		ctx, cancel = context.WithCancel(ctx)
 	}
 	defer cancel() // Cancel ctx as soon as handleSearch returns.
 
@@ -64,6 +80,7 @@ func handleSearch(w http.ResponseWriter, req *http.Request) {
 
 	// Run the Google search and print the results.
 	start := time.Now()
+	// For outgoing client requests, the context controls cancelation.
 	results, err := google.Search(ctx, query)
 	elapsed := time.Since(start)
 	if err != nil {

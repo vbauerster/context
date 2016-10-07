@@ -12,8 +12,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"golang.org/x/blog/content/context/userip"
-	"golang.org/x/net/context"
+	"context"
+	"userip"
 )
 
 // Results is an ordered list of search results.
@@ -27,7 +27,7 @@ type Result struct {
 // Search sends query to Google search and returns the results.
 func Search(ctx context.Context, query string) (Results, error) {
 	// Prepare the Google Search API request.
-	req, err := http.NewRequest("GET", "https://ajax.googleapis.com/ajax/services/search/web?v=1.0", nil)
+	req, err := http.NewRequest(http.MethodGet, "http://localhost:8000", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -78,17 +78,5 @@ func Search(ctx context.Context, query string) (Results, error) {
 // closed while the request or f is running, httpDo cancels the request, waits
 // for f to exit, and returns ctx.Err. Otherwise, httpDo returns f's error.
 func httpDo(ctx context.Context, req *http.Request, f func(*http.Response, error) error) error {
-	// Run the HTTP request in a goroutine and pass the response to f.
-	tr := &http.Transport{}
-	client := &http.Client{Transport: tr}
-	c := make(chan error, 1)
-	go func() { c <- f(client.Do(req)) }()
-	select {
-	case <-ctx.Done():
-		tr.CancelRequest(req)
-		<-c // Wait for f to return.
-		return ctx.Err()
-	case err := <-c:
-		return err
-	}
+	return f(http.DefaultClient.Do(req.WithContext(ctx)))
 }
